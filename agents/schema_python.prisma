@@ -1,0 +1,638 @@
+generator client {
+  provider = "prisma-client-py"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+enum RunStatus {
+  pending
+  pending_approval
+  approved
+  running
+  awaiting_confirm
+  done
+  failed
+  skipped
+}
+
+enum ConflictSeverity {
+  low
+  medium
+  high
+}
+
+enum JobType {
+  frontend
+  backend
+  planner
+  merge
+}
+
+enum MemoryType {
+  architecture_decision
+  preference
+  constraint
+  event
+  pattern
+  rejection
+}
+
+enum Priority {
+  high
+  medium
+  low
+}
+
+enum MemorySource {
+  user
+  system
+  inferred
+}
+
+enum ConflictType {
+  syntax
+  dependency
+  logic
+}
+
+enum ConnectionType {
+  dependency
+  data_flow
+  trigger
+}
+
+enum TeamRole {
+  owner
+  admin
+  member
+}
+
+enum DocumentStatus {
+  pending
+  approved
+  rejected
+}
+
+enum ReasoningMode {
+  impact_analysis
+  root_cause_analysis
+  conflict_resolution
+  simulation
+  optimization
+}
+
+enum EventType {
+  BLOCK_CREATED
+  BLOCK_UPDATED
+  BLOCK_DELETED
+  BLOCK_GENERATED
+  CONNECTION_CREATED
+  CONNECTION_DELETED
+  WORKFLOW_STARTED
+  WORKFLOW_COMPLETED
+  WORKFLOW_FAILED
+  CONFLICT_DETECTED
+  CONFLICT_RESOLVED
+  SNAPSHOT_CREATED
+  MEMORY_UPDATED
+}
+
+enum ResolutionStrategy {
+  accept_ai
+  accept_human
+  merge
+  escalate
+  defer
+}
+
+enum ResolutionStatus {
+  pending
+  resolved
+  escalated
+  deferred
+}
+
+// -----------------------------------------
+// User
+// -----------------------------------------
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique
+  email     String?  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teamMemberships     TeamMember[]
+  workflowRuns        WorkflowRun[]
+  jobRuns             JobRun[]
+  conflictLogs        ConflictLog[]
+  conflictResolutions ConflictResolution[]
+  createdTeams        Team[]
+  createdProjects     Project[]
+
+  @@map("users")
+}
+
+// -----------------------------------------
+// Team
+// -----------------------------------------
+model Team {
+  id              String   @id @default(uuid())
+  name            String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdByUserId String? // ✅ optional — existing teams won't have this
+
+  members  TeamMember[]
+  projects Project[]
+
+  createdBy User? @relation(fields: [createdByUserId], references: [id])
+
+  @@index([createdByUserId])
+  @@map("teams")
+}
+
+// -----------------------------------------
+// TeamMember (join table for multi-user teams)
+// -----------------------------------------
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  role      TeamRole @default(member)
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+// -----------------------------------------
+// Project
+// -----------------------------------------
+model Project {
+  id        String   @id @default(uuid())
+  teamId    String
+  createdByUserId String?
+  name      String
+  document  ProjectDocument?
+  planDoc      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team         Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation(fields: [createdByUserId], references: [id])
+  blocks       Block[]
+  connections  Connection[]
+  workflowRuns WorkflowRun[]
+  memories     Memory[]
+  eventLogs    EventLog[]
+  graphSnapshots     GraphSnapshot[]
+  memorySummaries    MemorySummary[]
+  reasoningResults   ReasoningResult[]
+  conflictResolutions ConflictResolution[]
+  subgraphCaches     SubgraphCache[]
+
+  @@index([teamId])
+  @@map("projects")
+}
+
+// -----------------------------------------
+// Block
+// -----------------------------------------
+model Block {
+  id                String    @id @default(uuid())
+  projectId         String
+  blockType         String
+  blockJson         Json
+  name              String? // ✅ optional — existing blocks won't have this
+  slug              String? // ✅ optional — existing blocks won't have this
+  depthLevel        Int?      // precomputed BFS depth from root
+  subgraphJson      Json?     // cached subgraph for this block
+  affectedCount     Int       @default(0)  // how many blocks depend on this
+  version           String    @default("1.0.0")
+  lastGeneratedHash String?
+  positionX         Float     @default(0)
+  positionY         Float     @default(0)
+  uiMeta            Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  generatedAt       DateTime?
+  deletedAt         DateTime?
+
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outConnections   Connection[]      @relation("FromBlock")
+  inConnections    Connection[]      @relation("ToBlock")
+  blockOutputs     BlockOutput[]
+  jobRuns          JobRun[]
+  conflicts        ConflictLog[]
+  reasoningResults ReasoningResult[]
+  subgraphCache    SubgraphCache?
+
+  @@index([projectId, deletedAt])
+  @@index([projectId, version])
+  @@index([projectId])
+  @@index([blockType])
+  @@map("blocks")
+}
+
+// -----------------------------------------
+// Connection
+// -----------------------------------------
+model Connection {
+  id             String         @id @default(uuid())
+  projectId      String
+  fromBlockId    String
+  toBlockId      String
+  connectionType ConnectionType @default(dependency)
+  sourceHandle   String?
+  targetHandle   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromBlock Block   @relation("FromBlock", fields: [fromBlockId], references: [id], onDelete: Cascade)
+  toBlock   Block   @relation("ToBlock", fields: [toBlockId], references: [id], onDelete: Cascade)
+
+  @@unique([fromBlockId, toBlockId])
+  @@index([projectId, deletedAt])
+  @@index([projectId])
+  @@index([projectId, connectionType])
+  @@index([connectionType])
+  @@map("connections")
+}
+
+// -----------------------------------------
+// WorkflowRun   now tracks which user triggered it
+// -----------------------------------------
+model WorkflowRun {
+  id                String    @id @default(uuid())
+  projectId         String
+  triggeredByUserId String    //  who initiated this run
+  prompt            String
+  status            RunStatus
+  version           Int       @default(1)
+  sharedContextJson Json
+  totalTokens       Int       @default(0)
+  agentVersion      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  project       Project        @relation(fields: [projectId], references: [id])
+  triggeredBy   User           @relation(fields: [triggeredByUserId], references: [id])
+  blockOutputs  BlockOutput[]
+  jobRuns       JobRun[]
+  mergedOutputs MergedOutput[]
+  conflicts     ConflictLog[]
+  fileMetadata  FileMetadata[]
+
+  @@index([projectId])
+  @@index([triggeredByUserId]) // query all runs by a user
+  @@index([triggeredByUserId, projectId]) // query runs by user + project
+  @@index([createdAt])
+  @@index([status])
+  @@index([triggeredByUserId, createdAt])
+  @@index([projectId, triggeredByUserId, createdAt])
+  @@map("workflow_runs")
+}
+
+// -----------------------------------------
+// BlockOutput
+// -----------------------------------------
+model BlockOutput {
+  id         String    @id @default(uuid())
+  runId      String
+  blockId    String
+  blockType  String
+  outputCode String
+  tokensUsed Int       @default(0)
+  status     RunStatus @default(pending)
+  errorMsg   String?
+  r2Key      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  block Block       @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([blockId, status, createdAt])
+  @@index([runId])
+  @@index([blockId])
+  @@index([createdAt])
+  @@map("block_outputs")
+}
+
+// -----------------------------------------
+// JobRun   now tracks which user triggered it
+// -----------------------------------------
+model JobRun {
+  id                String    @id @default(uuid())
+  workflowRunId     String
+  blockId           String?
+  triggeredByUserId String? //  who triggered this specific job
+  jobType           JobType
+  status            RunStatus @default(pending)
+  logs              Json?
+  errorMsg          String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  retryCount        Int       @default(0)
+  deletedAt         DateTime?
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  block       Block?      @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  triggeredBy User?       @relation(fields: [triggeredByUserId], references: [id])
+
+  @@index([workflowRunId])
+  @@index([blockId])
+  @@index([triggeredByUserId]) // query all jobs by a user
+  @@index([createdAt])
+  @@index([status])
+  @@index([jobType])
+  @@map("job_runs")
+}
+
+// -----------------------------------------
+// MergedOutput
+// -----------------------------------------
+model MergedOutput {
+  id            String   @id @default(uuid())
+  workflowRunId String
+  finalCode     String
+  summary       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@index([createdAt])
+  @@map("merged_outputs")
+}
+
+// -----------------------------------------
+// ConflictLog   now tracks which user it belongs to
+// -----------------------------------------
+model ConflictLog {
+  id               String           @id @default(uuid())
+  workflowRunId    String
+  blockId          String?
+  attributedUserId String?          //  which user's action caused this conflict
+  conflictType     ConflictType
+  message          String
+  severity         ConflictSeverity
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+
+  workflowRun  WorkflowRun         @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  block        Block?              @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  attributedTo User?               @relation(fields: [attributedUserId], references: [id])
+  resolution   ConflictResolution?
+
+  @@index([workflowRunId])
+  @@index([blockId])
+  @@index([attributedUserId]) // query conflicts by user
+  @@index([createdAt])
+  @@map("conflict_logs")
+}
+
+// -----------------------------------------
+// FileMetadata
+// -----------------------------------------
+model FileMetadata {
+  id            String    @id @default(uuid())
+  workflowRunId String
+  fileName      String
+  fileType      String
+  fileSize      Int
+  depth         Int?
+  fileUrl       String?
+  storageKey    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@index([createdAt])
+  @@map("file_metadata")
+}
+
+// -----------------------------------------
+// Memory
+// -----------------------------------------
+model Memory {
+  id        String @id @default(uuid())
+  projectId String
+
+  type       MemoryType
+  key        String
+  value      Json
+  confidence Float         @default(0.5)
+  priority   Priority      @default(medium)
+  source     MemorySource?
+  isConflict Boolean       @default(false)
+  usageCount Int           @default(0)
+  lastUsedAt DateTime?
+  version    Int           @default(1)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+  expiresAt  DateTime?
+  importanceScore Float     @default(0.5)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([projectId, type, confidence])
+  @@index([projectId])
+  @@index([type])
+  @@index([key])
+  @@index([projectId, type])
+  @@index([confidence])
+  @@index([projectId, key, version])
+  @@index([updatedAt])
+  @@index([priority])
+  @@index([projectId, type, priority])
+  @@index([projectId, priority, confidence])
+  @@map("memories")
+}
+
+// -----------------------------------------
+// ProjectDocument
+// -----------------------------------------
+model ProjectDocument {
+  id        String         @id @default(uuid())
+  projectId String         @unique
+  content   String
+  status    DocumentStatus @default(pending)
+  version   Int            @default(1)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_documents")
+}
+
+// ─────────────────────────────────────────
+// GraphSnapshot
+// ─────────────────────────────────────────
+model GraphSnapshot {
+  id          String   @id @default(uuid())
+  projectId   String
+  version     String
+  graphJson   Json
+  triggeredBy String
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+  @@index([projectId])
+  @@index([projectId, version])
+  @@index([createdAt])
+  @@map("graph_snapshots")
+}
+
+// ─────────────────────────────────────────
+// MemorySummary
+// ─────────────────────────────────────────
+model MemorySummary {
+  id          String   @id @default(uuid())
+  projectId   String   @unique
+  summaryText String
+  tokenCount  Int      @default(0)
+  lastUpdated DateTime @default(now()) @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("memory_summaries")
+}
+
+// ─────────────────────────────────────────
+// ReasoningResult
+// ─────────────────────────────────────────
+model ReasoningResult {
+  id         String        @id @default(uuid())
+  projectId  String
+  blockId    String?
+  mode       ReasoningMode
+  inputHash  String
+  result     Json
+  confidence Float         @default(0.0)
+  tokensUsed Int           @default(0)
+  model      String
+  expiresAt  DateTime
+  createdAt  DateTime      @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  block   Block?  @relation(fields: [blockId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, mode, inputHash])
+  @@index([projectId, mode])
+  @@index([inputHash])
+  @@index([expiresAt])
+  @@index([projectId, blockId])
+  @@map("reasoning_results")
+}
+
+// ─────────────────────────────────────────
+// EventLog
+// ─────────────────────────────────────────
+model EventLog {
+  id          String    @id @default(uuid())
+  projectId   String
+  eventType   EventType
+  type        String?   // Keep for compatibility
+  payload     Json
+  triggeredBy String?
+  processedAt DateTime?
+  processed   Boolean   @default(false) // Keep for compatibility
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, eventType])
+  @@index([projectId, createdAt])
+  @@index([createdAt])
+  @@index([eventType])
+  @@map("event_logs")
+}
+
+// ─────────────────────────────────────────
+// ConflictResolution
+// ─────────────────────────────────────────
+model ConflictResolution {
+  id               String             @id @default(uuid())
+  conflictLogId    String             @unique
+  projectId        String
+  strategy         ResolutionStrategy
+  status           ResolutionStatus   @default(pending)
+  aiConfidence     Float              @default(0.0)
+  resolvedByUserId String?
+  resolvedAt       DateTime?
+  resolutionJson   Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  conflictLog    ConflictLog @relation(fields: [conflictLogId], references: [id], onDelete: Cascade)
+  project        Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  resolvedByUser User?       @relation(fields: [resolvedByUserId], references: [id])
+
+  @@index([projectId])
+  @@index([status])
+  @@index([projectId, status])
+  @@index([createdAt])
+  @@map("conflict_resolutions")
+}
+
+model SubgraphCache {
+  id          String   @id @default(uuid())
+  projectId   String
+  blockId     String   @unique
+  subgraphJson Json    // compact subgraph for AI context
+  depthLevel  Int      @default(0)
+  affectedIds String[] // array of affected block IDs
+  computedAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  block   Block   @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, blockId])
+  @@index([projectId])
+  @@index([blockId])
+  @@map("subgraph_cache")
+}
+
+model BlockTemplate {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  blockType    String
+  description  String?
+  defaultJson  Json     // default blockJson structure
+  validationSchema Json? // JSON schema for validation
+  isSystem     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([blockType])
+  @@map("block_templates")
+}
+

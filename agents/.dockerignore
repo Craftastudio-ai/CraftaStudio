@@ -1,0 +1,15 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+agent.log
+debug_fail_parse_*.txt
+debug_raw_*.txt
+*.log
+.git
+.gitignore
+README.md
+*.md

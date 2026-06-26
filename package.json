@@ -1,0 +1,23 @@
+{
+  "name": "craftastudio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Root workspace runner for CraftaStudio — frontend + backend + agents",
+  "scripts": {
+    "dev": "concurrently --names \"frontend,backend,agents\" --prefix-colors \"cyan,yellow,magenta\" \"npm run dev --prefix frontend\" \"npm run dev --prefix backend\" \"node scripts/run-agents-dev.mjs\"",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "start": "concurrently --names \"frontend,backend,agents\" --prefix-colors \"cyan,yellow,magenta\" \"npm run start --prefix frontend\" \"npm run start --prefix backend\" \"node scripts/run-agents-dev.mjs\"",
+    "install:all": "npm install --prefix frontend && npm install --prefix backend && node scripts/install-agents-deps.mjs",
+    "type-check": "npm run type-check --prefix frontend && npm run type-check --prefix backend",
+    "postinstall": "npm run install:all"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "concurrently": "^8.2.2",
+    "prisma": "^5.17.0"
+  },
+  "dependencies": {
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@prisma/client": "^5.17.0"
+  }
+}

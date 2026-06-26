@@ -1,0 +1,181 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  
+  --color-primary-accent: var(--primary-accent);
+  --color-agent-running: var(--agent-running);
+  --color-agent-overflow: var(--agent-overflow);
+  --color-agent-idle: var(--agent-idle);
+  --color-surface: var(--surface);
+  
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  --animate-pulse-fast: pulse-fast 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-spin-slow: spin 4s linear infinite;
+  
+  @keyframes pulse-fast {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
+}
+
+:root {
+  /* Light Mode Palette - Indigo / Slate */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  
+  --surface: #ffffff;
+  --primary-accent: #7c3aed; /* Violet 600 */
+  
+  --agent-running: #10b981; /* Emerald 500 */
+  --agent-overflow: #f59e0b; /* Amber 500 */
+  --agent-idle: #e2e8f0; /* Slate 200 */
+
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  
+  --border: #e2e8f0;
+  --ring: #6366f1; /* Indigo 500 */
+  
+  --bg-pattern: radial-gradient(rgba(100, 116, 139, 0.2) 1px, transparent 1px);
+  --code-bg: #f1f5f9;
+  --code-text: #0f172a;
+  --code-border: #e2e8f0;
+  --code-gutter: #e2e8f0;
+}
+
+.dark {
+  /* Design spec: deep purple-black space theme */
+  --background: #08080f;
+  --foreground: #f0effe;
+
+  --surface: #111120;
+  --overlay: #16162a;
+  --primary-accent: #7c6fee;
+  --accent-bright: #9d8ff5;
+  --accent-glow: #c4bcfa;
+  --accent-dim: #4a3fa0;
+  --accent-mid: #6355d4;
+
+  --agent-running: #22c55e;
+  --agent-overflow: #f59e0b;
+  --agent-idle: #2a2a48;
+
+  --popover: #111120;
+  --popover-foreground: #f0effe;
+  --muted: #16162a;
+  --muted-foreground: #9896b8;
+  --muted-disabled: #3a3858;
+
+  --border: #1e1e38;
+  --border-strong: #2a2a48;
+  --ring: #7c6fee;
+
+  --bg-pattern: radial-gradient(rgba(124, 111, 238, 0.12) 1px, transparent 1px);
+  --code-bg: #0d0d1a;
+  --code-text: #f0effe;
+  --code-border: #1e1e38;
+  --code-gutter: #111120;
+
+  /* Syntax highlight tokens matching design spec */
+  --syn-keyword: #c4bcfa;
+  --syn-string: #9bd9a8;
+  --syn-type: #a4c5ff;
+  --syn-variable: #f0effe;
+  --syn-function: #9d8ff5;
+  --syn-punctuation: #5c5a7a;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  .bg-dot-grid {
+    background-color: var(--background);
+    background-image: var(--bg-pattern);
+    background-size: 24px 24px;
+    background-position: center;
+  }
+  .surface-card {
+    @apply bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm text-foreground;
+  }
+
+  /* Node Edges / Paths */
+  .react-flow__edge-path {
+    stroke-linecap: round;
+    stroke: var(--primary-accent); 
+    stroke-width: 2px;
+    opacity: 0.6;
+    transition: stroke 0.3s ease, filter 0.3s ease, stroke-dasharray 0.3s ease;
+  }
+
+  /* Making lines dashed to match image */
+  .react-flow__edge .react-flow__edge-path {
+    stroke-dasharray: 6 6 !important; /* Adding dashed line for standard edges */
+  }
+
+  .react-flow__edge.selected .react-flow__edge-path,
+  .react-flow__edge:focus .react-flow__edge-path,
+  .react-flow__edge:hover .react-flow__edge-path {
+    stroke: var(--primary-accent) !important;
+    filter: drop-shadow(0 0 5px var(--primary-accent)) !important;
+    opacity: 1 !important;
+    stroke-dasharray: 8 4 !important;
+    animation: flow 1s linear infinite;
+  }
+
+  /**
+   * flow — used by the CSS hover/selected rule above
+   */
+  @keyframes flow {
+    from { stroke-dashoffset: 24; }
+    to   { stroke-dashoffset: 0;  }
+  }
+
+  /**
+   * edge-flow — used by the JS-driven active-edge animation (FlowingEdge).
+   * Drives the dashed-line marching-ants effect on active edges.
+   * Spec: stroke-dashoffset -12 per cycle.
+   */
+  @keyframes edge-flow {
+    to { stroke-dashoffset: -12; }
+  }
+
+  @keyframes hero-grid-move {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 72px 72px, 72px 72px; }
+  }
+
+  .hero-grid {
+    background-image:
+      linear-gradient(rgba(22, 22, 42, 0.7) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(22, 22, 42, 0.7) 1px, transparent 1px);
+    background-size: 72px 72px;
+    animation: hero-grid-move 60s linear infinite;
+  }
+}

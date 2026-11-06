@@ -68,8 +68,8 @@ Prompt → Planner AI → Canvas Blocks → SharedContext → Parallel Agents �
 
 ```bash
 # 1. Clone & environment
-git clone https://github.com/pranavgawaii/craftastudio.git
-cd craftastudio
+git clone https://github.com/Craftastudio-ai/CraftaStudio.git
+cd CraftaStudio
 cp .env.example .env
 
 # 2. Install dependencies across the workspace
